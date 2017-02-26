@@ -79,7 +79,13 @@ app.get('/address', (req, res) => {
 app.get('/ping', (req, res) => {
   // force echo function immediately
   bitcoinEcho()
-    .then(all => res.end(all.toString()))
+    .then(all => {
+      if (all.length === 0) {
+        res.end('no free outputs to send');
+      } else {
+        res.end(all.toString());
+      }
+    })
     .catch(err => res.end(err.toString()));
 });
 
@@ -165,9 +171,7 @@ function getUnspents(address) {
   let url = `https://blockchain.info/pl/unspent?active=${address}`;
   return new Promise((resolve, reject) => {
     get(url).asBuffer((err, buf) => {
-      if (err) {
-        reject(err);
-      }
+      if (err) resolve([]);
       try {
         resolve(JSON.parse(buf.toString())['unspent_outputs']);
       } catch (e) {
