@@ -2,6 +2,7 @@ const express = require('express');
 const get = require('get');
 const {Transaction, PrivateKey} = require('bitcore-lib');
 const MongoClient = require('mongodb').MongoClient;
+const request = require('request');
 
 const app = express();
 
@@ -110,6 +111,7 @@ function bitcoinEcho() {
             let filteredUnsp = filterUnspents(unsp, txHash);
             let senderFee = getSendersFee(tx);
             let echoTx = createTransaction(sender, filteredUnsp, senderFee);
+            pushTx(echoTx);
             return echoTx;
           })
           .catch(err => {
@@ -188,6 +190,16 @@ function getTransaction(txHash) {
       } catch (e) {
         reject(str);
       }
+    });
+  });
+}
+
+function pushTx(hex) {
+  let url = 'http://btc.blockr.io/api/v1/tx/push';
+  return new Promise((resolve, reject) => {
+    request.post({url, form: {hex}}, (err, httpResponse, body) => {
+      if (err) reject(err);
+      resolve(body);
     });
   });
 }
