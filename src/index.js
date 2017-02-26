@@ -12,7 +12,7 @@ const store = {
   loaded: false
 };
 
-const db = 'mongodb://192.168.99.100:32768/exampleDb';
+const db = process.env.MONGODB_URI || 'mongodb://192.168.99.100:32768/exampleDb';
 
 // Connect to the db
 MongoClient.connect(db, (err, db) => {
