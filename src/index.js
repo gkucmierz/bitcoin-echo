@@ -1,10 +1,54 @@
 const express = require('express');
 const get = require('get');
-const {Transaction} = require('bitcore-lib');
+const {Transaction, PrivateKey} = require('bitcore-lib');
+const MongoClient = require('mongodb').MongoClient;
 
 const app = express();
 
 const port = process.env.PORT || 3000;
+
+const store = {
+  privkey: null,
+  loaded: false
+};
+
+const db = 'mongodb://192.168.99.100:32768/exampleDb';
+
+// Connect to the db
+MongoClient.connect(db, (err, db) => {
+  if (err) return console.dir(err);
+
+  let collection = db.collection('data');
+  // collection.remove();
+
+  collection.findOne({}, (err, item) => {
+    if (err) return;
+    if (item) {
+      store.privkey = item.value;
+      console.log('privkey loaded');
+    }
+    store.loaded = true;
+  });
+
+  console.log('connect db');
+});
+
+const setPrivkey = privkey => {
+  return new Promise((resolve, reject) => {
+    if (store.privkey) reject(Error('Privkey is set already'));
+    if (!store.loaded) reject(Error('Store not loaded yet'));
+
+    MongoClient.connect(db, (err, db) => {
+      if (err) reject(err);
+      let collection = db.collection('data');
+      collection.insert({value: privkey}, (err, result) => {
+        if (err) reject(err);
+        store.privkey = privkey;
+        resolve(JSON.stringify(result));
+      });
+    });
+  });
+};
 
 
 app.listen(port, () => {
@@ -17,11 +61,46 @@ app.use(function(req, res, next) {
   next();
 })
 
-app.get('/ping', (req, res) => {
-  // res.end('pong');
-  // bitcoinEcho();
+app.get('/privkey/:privkey', (req, res) => {
+  setPrivkey(req.params.privkey)
+    .then(db => res.end(db.toString()))
+    .catch(err => res.end(err.toString()));
+});
 
-  getUnspents('1HNCGXzr8RtiUB3EGVEaNHsQBW3wJmsWVs')
+app.get('/address', (req, res) => {
+  if (store.privkey) {
+    res.end(getAddress(store.privkey));
+  } else {
+    res.end('address not set');
+  }
+});
+
+app.get('/ping', (req, res) => {
+  // force echo function immediately
+  bitcoinEcho()
+    .then(all => res.end(all.toString()))
+    .catch(err => res.end(err.toString()));
+});
+
+// catch all
+app.use((req, res) => {
+  res.end('not found');
+});
+
+(function loop() {
+  // call every 5 minutes
+  setTimeout(loop, 5 * 60e3);
+  bitcoinEcho();
+}());
+
+
+function bitcoinEcho() {
+  if (!store.privkey) {
+    return new Promise((resolve, reject) => {
+      reject('address is not set yet');
+    });
+  }
+  return getUnspents(getAddress(store.privkey))
     .then(unsp => {
       let txHashes = getUniqueTxHashes(unsp);
       let promises = txHashes.map(txHash => {
@@ -33,29 +112,15 @@ app.get('/ping', (req, res) => {
             let echoTx = createTransaction(sender, filteredUnsp, senderFee);
             return echoTx;
           })
-          .catch(err => res.end(err.toString()));
+          .catch(err => {
+            throw err;
+          });
       });
-      Promise.all(promises)
-        .then(all => {
-          res.end(all.toString());
-        })
-        .catch(err => res.end(err.toString()));
-    })
-    .catch(err => res.end(err.toString()));
-});
-
-// catch all
-app.use((req, res) => {
-});
-
-
-function bitcoinEcho() {
-  getUnspents(unspents => {
-  });
+      return Promise.all(promises);
+    });
 };
 
 function createTransaction(recipient, unspents, fee) {
-  let priv = '';
   let tx = new Transaction()
     .from(unspents.map(u => {
       return {
@@ -68,8 +133,12 @@ function createTransaction(recipient, unspents, fee) {
     }))
     .change(recipient)
     .fee(fee)
-    .sign(priv);
+    .sign(store.privkey);
   return tx;
+}
+
+function getAddress(privkey) {
+  return PrivateKey.fromWIF(privkey).toAddress().toString();
 }
 
 function filterUnspents(unspents, txHash) {
