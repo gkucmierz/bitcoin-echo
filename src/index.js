@@ -117,8 +117,9 @@ function bitcoinEcho() {
             let filteredUnsp = filterUnspents(unsp, txHash);
             let senderFee = getSendersFee(tx);
             let echoTx = createTransaction(sender, filteredUnsp, senderFee);
-            pushTx(echoTx);
-            return echoTx;
+            let rawTx = echoTx.toString();
+            pushTx(rawTx);
+            return rawTx;
           })
           .catch(err => {
             throw err;
@@ -198,10 +199,11 @@ function getTransaction(txHash) {
   });
 }
 
-function pushTx(hex) {
+function pushTx(rawTx) {
   let url = 'http://btc.blockr.io/api/v1/tx/push';
   return new Promise((resolve, reject) => {
-    request.post({url, form: {hex}}, (err, httpResponse, body) => {
+    let form = {hex: rawTx};
+    request.post({url, form}, (err, httpResponse, body) => {
       if (err) reject(err);
       resolve(body);
     });
